@@ -9,3 +9,5 @@ Features
 * Audio layer has a toggle button to allow volume control using encoder
 
 VIA can be used by enabling in rules.mk.  When using VIA, configure OLED layer displays in QMK and key layout and macros in VIA.
+
+NOTE: Photo represents an older version.  Some text has since been updated.
