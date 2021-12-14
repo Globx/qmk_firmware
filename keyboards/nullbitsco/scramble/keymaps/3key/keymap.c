@@ -60,9 +60,9 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 
 };
 
-#ifdef OLED_DRIVER_ENABLE
+#ifdef OLED_ENABLE
 // All writes using fixed 21 character spacing to clear previous layer text
-void oled_task_user(void) {
+bool oled_task_user(void) {
     oled_write_P(PSTR("LAYER > "), false);
     switch (get_highest_layer(layer_state)) {
         case _BASE:
@@ -74,7 +74,7 @@ void oled_task_user(void) {
         case _VIA1:
             oled_write_P(PSTR("REDDIT       "), false);
             oled_write_P(PSTR("1 NULLBITS 2 XBOX    "), false);
-            oled_write_P(PSTR("3 MECHBEYB           "), false);
+            oled_write_P(PSTR("3 MECHKEYB           "), false);
             oled_write_P(PSTR("                     "), false);
             break;
         case _VIA2:
@@ -98,6 +98,7 @@ void oled_task_user(void) {
             oled_write_P(PSTR("                     "), false);
             break;
     }
+    return false;
 }
 #endif
 
