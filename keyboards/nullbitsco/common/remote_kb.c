@@ -36,8 +36,16 @@ uint8_t
 bool
  is_host = true;
 
-// Private functions
+// globx syncdata vars
+uint8_t syncdata_rgbmode = 0;
+bool syncdata_rgbmode_enabled = false;
+bool syncdata_rgbmode_set = false; // sync on start?
+bool syncdata_hsv_set = false; // sync on start?
+uint8_t syncdata_hsv_h = 0;
+uint8_t syncdata_hsv_s = 0;
+uint8_t syncdata_hsv_v = 0;
 
+// Private functions
 static bool vbus_detect(void) {
   #if defined(__AVR_ATmega32U4__)
     //returns true if VBUS is present, false otherwise.
@@ -66,6 +74,28 @@ static void send_msg(uint16_t keycode, bool pressed) {
   uart_transmit(msg, UART_MSG_LEN);
 }
 
+// globx - remote calls this when changing rgbmore or rbglight enabled/disabled
+void send_syncdata_rgbmode_msg(uint8_t mode, bool enabled) {  
+  msg[IDX_PREAMBLE] = UART_SYNCDATA_RGBMODE_PREAMBLE;
+  msg[IDX_SYNCDATA_RGBMODE] = mode;
+  msg[IDX_SYNCDATA_RGBMODE_ENABLED] = (uint8_t)enabled; // only need 1 bit for this.
+  msg[IDX_SYNCDATA_RGBMODE_RESERVED2] = 0;  
+  msg[IDX_CHECKSUM] = chksum8(msg, UART_MSG_LEN-1);
+
+  uart_transmit(msg, UART_MSG_LEN);
+}
+
+// globx - remote calls this when changing HSV
+void send_syncdata_hsv_msg(uint8_t h, uint8_t s, uint8_t v) {
+  msg[IDX_PREAMBLE] = UART_SYNCDATA_HSV_PREAMBLE;  
+  msg[IDX_SYNCDATA_HSV_H] = h;
+  msg[IDX_SYNCDATA_HSV_S] = s;
+  msg[IDX_SYNCDATA_HSV_V] = v;
+  msg[IDX_CHECKSUM] = chksum8(msg, UART_MSG_LEN-1);
+
+  uart_transmit(msg, UART_MSG_LEN);
+}
+
 static void print_message_buffer(void) {
   for (int i=0; i<UART_MSG_LEN; i++) {
     dprintf("msg[%u]: %u\n", i, msg[i]);
@@ -74,27 +104,55 @@ static void print_message_buffer(void) {
 
 static void process_uart(void) {
   uint8_t chksum = chksum8(msg, UART_MSG_LEN-1);
-  if (msg[IDX_PREAMBLE] != UART_PREAMBLE || msg[IDX_CHECKSUM] != chksum) {
+  // globx - added syncdata preamble checks
+  if ((msg[IDX_PREAMBLE] != UART_PREAMBLE && msg[IDX_PREAMBLE] != UART_SYNCDATA_RGBMODE_PREAMBLE && msg[IDX_PREAMBLE] != UART_SYNCDATA_HSV_PREAMBLE) || msg[IDX_CHECKSUM] != chksum) {
      dprintf("UART checksum mismatch!\n");
      print_message_buffer();
      dprintf("calc checksum: %u\n", chksum);
   } else {
-    uint16_t keycode = (uint16_t)msg[IDX_KCLSB] | ((uint16_t)msg[IDX_KCMSB] << 8);
-    bool pressed = (bool)msg[IDX_PRESSED];
-    if (IS_RM_KC(keycode)) {
-      keyrecord_t record;
-      record.event.pressed = pressed;
-      if (pressed) dprintf("Remote macro: press [%u]\n", keycode);
-      else dprintf("Remote macro: release [%u]\n", keycode);
-      process_record_user(keycode, &record);
-    } else {
-      if (pressed) {
-        dprintf("Remote: press [%u]\n", keycode);
-        register_code(keycode);
-    } else {
-        dprintf("Remote: release [%u]\n", keycode);
-        unregister_code(keycode);
-      }
+
+    uint8_t preamble = msg[IDX_PREAMBLE];
+    if (preamble == UART_PREAMBLE) {
+        uint16_t keycode = (uint16_t)msg[IDX_KCLSB] | ((uint16_t)msg[IDX_KCMSB] << 8);
+        bool pressed = (bool)msg[IDX_PRESSED];
+        // globx - added syncing keycodes for RGB_MOD and up. Skipped RGB_TOG since that is handled by syncdata.  If you want to use polling instead, then you should add RGB_TOG instead of RGB_MOD.
+        if (IS_RM_KC(keycode) || (keycode >= RGB_MOD && keycode  <= RGB_MODE_RGBTEST)) {
+          keyrecord_t record;
+          record.event.time = 0;  // globx - identify message comes from remote.
+          record.event.pressed = pressed;
+          if (pressed) dprintf("Remote macro: press [%u]\n", keycode);
+          else dprintf("Remote macro: release [%u]\n", keycode);
+          process_record_user(keycode, &record);
+        } else {
+          if (pressed) {
+            dprintf("Remote: press [%u]\n", keycode);
+            register_code(keycode);
+        } else {
+            dprintf("Remote: release [%u]\n", keycode);
+            unregister_code(keycode);
+          }
+        }
+    }
+    else if (preamble == UART_SYNCDATA_RGBMODE_PREAMBLE) {  // globx - handle syncdata rgbmode
+        syncdata_rgbmode = msg[IDX_SYNCDATA_RGBMODE];
+        syncdata_rgbmode_enabled = msg[IDX_SYNCDATA_RGBMODE_ENABLED] == 1;
+        syncdata_rgbmode_set = true;
+        dprintf("Remote SyncData RGBMODE [%u] enabled[%u]\n", syncdata_rgbmode, syncdata_rgbmode_enabled);     
+
+        keyrecord_t record;
+        record.event.pressed = true;
+        process_record_user(RM_SD_RGBMODE, &record);
+    }
+    else if (preamble == UART_SYNCDATA_HSV_PREAMBLE) {  // globx - handle syncdata HSV
+        syncdata_hsv_h = msg[IDX_SYNCDATA_HSV_H];
+        syncdata_hsv_s = msg[IDX_SYNCDATA_HSV_S];
+        syncdata_hsv_v = msg[IDX_SYNCDATA_HSV_V];
+        syncdata_hsv_set = true;
+        dprintf("Remote SyncData HSV h[%u] s[%u] v[%u]\n", syncdata_hsv_h, syncdata_hsv_s, syncdata_hsv_v);     
+
+        keyrecord_t record;        
+        record.event.pressed = true;
+        process_record_user(RM_SD_HSV, &record);
     }
   }
 }
@@ -103,7 +161,8 @@ static void get_msg(void) {
   while (uart_available()) {
     msg[msg_idx] = uart_read();
     dprintf("idx: %u, recv: %u\n", msg_idx, msg[msg_idx]);
-    if (msg_idx == 0 && (msg[msg_idx] != UART_PREAMBLE)) {
+    // globx - added syncdata preamble.
+    if (msg_idx == 0 && (msg[msg_idx] != UART_PREAMBLE && msg[msg_idx] != UART_SYNCDATA_RGBMODE_PREAMBLE && msg[msg_idx] != UART_SYNCDATA_HSV_PREAMBLE)) {
       dprintf("Byte sync error!\n");
       msg_idx = 0;
     } else if (msg_idx == (UART_MSG_LEN-1)) {
@@ -128,7 +187,8 @@ static void handle_remote_incoming(void) {
 }
 
 static void handle_remote_outgoing(uint16_t keycode, keyrecord_t *record) {
-  if (IS_HID_KC(keycode) || IS_RM_KC(keycode)) {
+  // globx - these should match from process_uart.
+  if (IS_HID_KC(keycode) || IS_RM_KC(keycode)  || (keycode >= RGB_MOD && keycode  <= RGB_MODE_RGBTEST)) {
     dprintf("Remote: send [%u]\n", keycode);
     send_msg(keycode, record->event.pressed);
   }
@@ -174,3 +234,39 @@ void matrix_scan_remote_kb(void) {
   }
   #endif
 }
+
+// globx - return host/remote flag
+bool get_is_host(void) {
+ return is_host;
+}
+
+// globx - Older polling code
+/*
+
+bool get_is_rgbmode_set(void) {  
+  return syncdata_rgbmode_set;
+}
+
+bool get_is_hsv_set(void) {  
+  return syncdata_hsv_set;
+}
+*/
+
+// globx - get syncdata rgbmode
+uint8_t get_syncdata_rgbmode(void) {
+  syncdata_rgbmode_set = false;
+  return syncdata_rgbmode;
+}
+
+// globx - get syncdata for rgblight_is_enabled()
+bool get_syncdata_rgbmode_enabled(void) {
+  syncdata_rgbmode_set = false;
+  return syncdata_rgbmode_enabled;
+}
+
+// globx - get syncdata for current HSV
+HSV get_syncdata_hsv(void) {
+  syncdata_hsv_set = false;
+  return (HSV) { syncdata_hsv_h, syncdata_hsv_s, syncdata_hsv_v };
+}
+
