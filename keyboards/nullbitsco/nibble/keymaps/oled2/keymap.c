@@ -292,55 +292,6 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         }
         return false;
         break;       
-
-        case RGB_TOG:
-          if (record->event.pressed) {               
-            rgblight_toggle();
-          }          
-          return false;
-          break;
-
-        case RGB_MOD:
-          if (record->event.pressed) {     
-              rgblight_step();
-          }
-          break;
-        case RGB_RMOD:
-          if (record->event.pressed) {              
-              rgblight_step_reverse();
-          }
-          break;
-        case RGB_HUI:
-          if (record->event.pressed) {              
-              rgblight_increase_hue();
-          }
-          break;
-        case RGB_HUD:
-          if (record->event.pressed) {              
-              rgblight_decrease_hue();
-          }
-          break;
-        case RGB_SAI:
-          if (record->event.pressed) {              
-              rgblight_increase_sat();
-          }
-          break;
-        case RGB_SAD:
-          if (record->event.pressed) {              
-              rgblight_decrease_sat();
-          }
-          break;
-        case RGB_VAI:
-          if (record->event.pressed) {              
-              rgblight_increase_val();
-          }
-          break;
-        case RGB_VAD:
-          if (record->event.pressed) {              
-              rgblight_decrease_val();
-          }
-          break;
-
         case RM_1:
           if (record->event.pressed) {              
               SEND_STRING(SS_LGUI("r") SS_DELAY(500) "msedge twitch.tv" SS_TAP(X_ENTER));              
