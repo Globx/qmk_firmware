@@ -294,9 +294,9 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         break;       
 
         case RGB_TOG:
-          if (record->event.pressed && record->event.time == 0) {     
-               rgblight_toggle();
-          }
+          if (record->event.pressed) {               
+            rgblight_toggle();
+          }          
           return false;
           break;
 
